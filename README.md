@@ -1,7 +1,6 @@
 # XinLoiHuy_23110231
-![Demo Animation](gif_files/BFS.gif)
-## Thuật toán tìm kiếm:
 
+## Thuật toán tìm kiếm:
 
 ### BFS (Breadth-First Search)
 ![BFS](gif_files/BFS.gif)
