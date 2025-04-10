@@ -28,3 +28,12 @@
 
 ### Steepest-Ascent Hill Climbing (SAHC)
 ![SAHC](gif_files/SAHC.gif)
+
+### Stochastic Hill Climbing
+![SAHC](gif_files/STOHC.gif)
+
+### Simulated Annealing
+![SAHC](gif_files/SA.gif)
+
+### Beam Search 
+![SAHC](gif_files/BS.gif)
