@@ -11,6 +11,9 @@
 ### DFS (Depth-First Search)
 ![DFS](gif_files/DFS.gif)
 
+### DLS (Depth Limited Search)
+![DLS](gif_files/DLS.gif)
+
 ### IDDFS (Iterative Deepening DFS)
 ![IDDFS](gif_files/IDDFS.gif)
 
@@ -30,10 +33,16 @@
 ![SAHC](gif_files/SAHC.gif)
 
 ### Stochastic Hill Climbing
-![SAHC](gif_files/STOHC.gif)
+![StoHC](gif_files/STOHC.gif)
 
 ### Simulated Annealing
-![SAHC](gif_files/SA.gif)
+![SA](gif_files/SA.gif)
 
 ### Beam Search 
-![SAHC](gif_files/BS.gif)
+![BS](gif_files/BS.gif)
+
+### Genetic Search 
+![GA](gif_files/GA.gif)
+
+### And Or Graph Search 
+![AND_OR](gif_files/AND_OR.gif)
