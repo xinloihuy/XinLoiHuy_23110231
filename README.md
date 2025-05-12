@@ -46,3 +46,12 @@
 
 ### And Or Graph Search 
 ![AND_OR](gif_files/AND_OR.gif)
+
+### Generate And Test
+![GAT](gif_files/Generate_And_Test.gif)
+
+### Backtracking
+![BACKTRACKING](gif_files/Backtracking.gif)
+
+### AC3 and AC3+Backtracking
+![AC3_BACKTRACKING](gif_files/AC3.gif)
