@@ -10,6 +10,7 @@ import heapq
 import math
 import copy
 from copy import deepcopy
+import itertools
 
 WIDTH, HEIGHT = 300, 400
 GRID_SIZE = WIDTH // 3
@@ -443,114 +444,173 @@ def make_move(state, direction):
         return swap(state, row, col, new_row, new_col)
     return None
 
-
 class GenericSearch:
-    def __init__(self, initial_state, goal_state,type):
+    def __init__(self, initial_state, goal_state, heuristic_type="Manhattan"):
         self.initial_state = initial_state
         self.goal_state = goal_state
         self.population_size = 200
-        self.max_generations = 2000
-        self.mutation_rate = 0.2
+        self.max_generations = 5000
+        self.mutation_rate = 0.1
         self.elitism_count = 5
-        self.move_limit = 20  # Số bước tối đa cho 1 cá thể
-        self.population = []  # Mỗi cá thể sẽ là một dict chứa: moves, state, path
-        if type == "Misplaced":
+        self.max_moves = 30     # max genome length
+        self.possible_moves = ['up', 'down', 'left', 'right']
+
+        if heuristic_type.lower() == "misplaced":
             self.heuristic = misplaced_tiles
         else:
             self.heuristic = manhattan_distance
 
     def initialize_population(self):
-        """Khởi tạo quần thể ban đầu."""
-        self.population = [self.generate_individual() for _ in range(self.population_size)]
+        self.population = [self._create_individual() for _ in range(self.population_size)]
+
+    def _create_individual(self):
+        length = random.randint(1, self.max_moves)
+        moves = [random.choice(self.possible_moves) for _ in range(length)]
+        state, path = self.apply_moves(moves)
+        return {"moves": moves, "state": state, "path": path}
 
     def apply_moves(self, moves):
-        """Từ chuỗi moves, áp dụng liên tiếp từ initial_state và trả về (state, path)."""
         state = deepcopy(self.initial_state)
         path = [state]
-        for move in moves:
-            new_state = make_move(state, move)
+        for mv in moves:
+            new_state = make_move(state, mv)
             if new_state is None:
-                break  # Dừng lại nếu di chuyển không hợp lệ
+                # invalid move -> skip
+                continue
             state = new_state
             path.append(state)
+            if state == self.goal_state:
+                break
         return state, path
-    
+
+    def fitness(self, individual):
+        # combine heuristic and path length penalty
+        h = self.heuristic(individual['state'], self.goal_state)
+        l = len(individual['moves'])
+        return 1 / (1 + h + 0.1 * l)
+
     def selection(self):
-        """Tournament selection."""
-        tournament_size = 3
+        # tournament selection
         selected = []
         for _ in range(self.population_size):
-            contestants = random.sample(self.population, tournament_size)
-            winner = max(contestants, key=lambda x: self.fitness(x))
+            contestants = random.sample(self.population, 3)
+            winner = max(contestants, key=self.fitness)
             selected.append(winner)
         return selected
 
-    def generate_individual(self):
-        """Tạo cá thể ngẫu nhiên dưới dạng chuỗi moves."""
-        possible_moves = ['up', 'down', 'left', 'right']
-        moves = [random.choice(possible_moves) for _ in range(self.move_limit)]
-        state, path = self.apply_moves(moves)
-        return {"moves": moves, "state": state, "path": path}
-
-    def fitness(self, individual):
-        """Đánh giá fitness dựa trên khoảng cách Manhattan."""
-        return 1 / (1 + self.heuristic(individual["state"], self.goal_state))
-
-    def crossover(self, parent1, parent2):
-        """Crossover giữa hai chuỗi moves."""
-        moves1 = parent1["moves"]
-        moves2 = parent2["moves"]
-        # Chọn điểm cắt ngẫu nhiên trên cả 2 chuỗi
-        cp1 = random.randint(0, len(moves1))
-        cp2 = random.randint(0, len(moves2))
-        child_moves = moves1[:cp1] + moves2[cp2:]
+    def crossover(self, p1, p2):
+        m1, m2 = p1['moves'], p2['moves']
+        if len(m1) < 2 or len(m2) < 2:
+            return deepcopy(random.choice([p1, p2]))
+        cp1 = random.randint(1, len(m1)-1)
+        cp2 = random.randint(1, len(m2)-1)
+        child_moves = m1[:cp1] + m2[cp2:]
         state, path = self.apply_moves(child_moves)
         return {"moves": child_moves, "state": state, "path": path}
-    
+
     def mutate(self, individual):
-        """Đột biến một cá thể: thay đổi một bước di chuyển ngẫu nhiên."""
-        moves = individual["moves"][:]  # Sao chép chuỗi moves
-        possible_moves = ['up', 'down', 'left', 'right']
-        if moves:
-            index = random.randint(0, len(moves) - 1)
-            moves[index] = random.choice(possible_moves)
+        moves = individual['moves'][:]
+        if random.random() < 0.5 and len(moves) < self.max_moves:
+            # insert a random move
+            idx = random.randint(0, len(moves))
+            moves.insert(idx, random.choice(self.possible_moves))
+        else:
+            # modify or delete
+            idx = random.randrange(len(moves))
+            if random.random() < 0.5:
+                moves[idx] = random.choice(self.possible_moves)
+            else:
+                moves.pop(idx)
         state, path = self.apply_moves(moves)
         return {"moves": moves, "state": state, "path": path}
 
-    def evolve(self):
-        """Tiến hóa đến khi tìm được đường đi hợp lệ từ initial_state đến goal_state."""
-        self.population = [self.generate_individual() for _ in range(self.population_size)]
-        for generation in range(self.max_generations):
-            fitness_scores = [self.fitness(ind) for ind in self.population]
-            best_fitness = max(fitness_scores)
-            best_ind = self.population[fitness_scores.index(best_fitness)]
-            print(f"Generation {generation}, Best Fitness: {best_fitness}")
+    def evolve(self, result_text: tk.Text):
+        self.initialize_population()
+        for gen in range(self.max_generations):
+            # evaluate
+            scored = [(ind, self.fitness(ind)) for ind in self.population]
+            scored.sort(key=lambda x: x[1], reverse=True)
+            best, best_fit = scored[0]
+            result_text.insert(tk.END, f"Gen {gen}: best fit={best_fit:.4f}, moves={len(best['moves'])}\n")
+            result_text.see(tk.END)
+            result_text.update()
 
-            if best_ind["state"] == self.goal_state:
-                # Khi đã tìm được, trả về path từ initial_state đến goal_state
-                return best_ind["path"], generation
+            if best['state'] == self.goal_state:
+                return best['path'], gen
 
+            # selection
             selected = self.selection()
-            next_generation = []
-            for i in range(0, self.population_size, 2):
-                parent1 = selected[i]
-                parent2 = selected[i+1]
-                child1 = self.crossover(parent1, parent2)
-                child2 = self.crossover(parent2, parent1)
-                next_generation.extend([child1, child2])
-            for i in range(len(next_generation)):
-                if random.random() < self.mutation_rate:
-                    next_generation[i] = self.mutate(next_generation[i])
-            # Áp dụng elitism: giữ lại một số cá thể tốt từ thế hệ cũ
-            sorted_population = sorted(self.population, key=lambda x: self.fitness(x), reverse=True)
-            next_generation[:self.elitism_count] = sorted_population[:self.elitism_count]
-            self.population = next_generation
+            # generate children
+            children = []
+            for i in range(0, self.population_size - self.elitism_count, 2):
+                c1 = self.crossover(selected[i], selected[i+1])
+                c2 = self.crossover(selected[i+1], selected[i])
+                children.extend([c1, c2])
+            # mutate
+            children = [self.mutate(c) if random.random() < self.mutation_rate else c for c in children]
+            # elitism
+            elites = [ind for ind, _ in scored[:self.elitism_count]]
+            self.population = children + elites
 
         return None, self.max_generations
 
+class NoisyGridProblem:
+    def __init__(self, initial_table, goal):
+        self.initial_table = initial_table
+        self.goal = goal
+
+    def goal_test(self, state):
+        return state == self.goal
+
+    def actions(self, state):
+        # Find position of empty tile (0)
+        x, y = None, None
+        for i in range(3):
+            for j in range(3):
+                if state[i][j] == 0:
+                    x, y = i, j
+                    break
+            if x is not None:
+                break
+
+        possible_moves = []
+        # Check each possible move
+        if x > 0: possible_moves.append("Up")
+        if x < 2: possible_moves.append("Down") 
+        if y > 0: possible_moves.append("Left")
+        if y < 2: possible_moves.append("Right")
+
+        return possible_moves
+
+    def result(self, state, action):
+        # Convert state to list for modification
+        state_list = [list(row) for row in state]
+        
+        # Find empty tile
+        x, y = None, None
+        for i in range(3):
+            for j in range(3):
+                if state[i][j] == 0:
+                    x, y = i, j
+                    break
+            if x is not None:
+                break
+
+        # Make the move
+        if action == "Up":
+            state_list[x][y], state_list[x-1][y] = state_list[x-1][y], state_list[x][y]
+        elif action == "Down":
+            state_list[x][y], state_list[x+1][y] = state_list[x+1][y], state_list[x][y]
+        elif action == "Left":
+            state_list[x][y], state_list[x][y-1] = state_list[x][y-1], state_list[x][y]
+        elif action == "Right":
+            state_list[x][y], state_list[x][y+1] = state_list[x][y+1], state_list[x][y]
+
+        # Convert back to tuple and return
+        return [tuple(tuple(row) for row in state_list)]
 
 class AndOrSearch:
-    def __init__(self, problem, depth_limit=50):
+    def __init__(self, problem, depth_limit=30):
         self.problem = problem
         self.path = None
         self.iterations = 0
@@ -569,7 +629,9 @@ class AndOrSearch:
             return None
 
         path.add(state)
+        print(state)
         for action in self.problem.actions(state):
+            
             result_states = self.problem.result(state, action)
             plan = self.and_search(result_states, path.copy())
             if plan is not None:
@@ -584,6 +646,260 @@ class AndOrSearch:
                 return None
             plan.extend(sub_plan)
         return plan
+
+
+class BacktrackingSolver:
+    def __init__(self, variables, domains, constraints):
+        self.variables = variables
+        self.domains = domains
+        self.constraints = constraints
+        self.solutions = []
+        self.trace_steps = []
+        self.solution_indices = []
+
+    def solve_all(self):
+        self.solutions.clear()
+        self.trace_steps.clear()
+        self.solution_indices.clear()
+        self._recursive_backtrack({})
+        return self.solutions
+
+    def _recursive_backtrack(self, assignment):
+        self.trace_steps.append(assignment.copy())
+        if len(assignment) == len(self.variables):
+            self.solutions.append(assignment.copy())
+            self.solution_indices.append(len(self.trace_steps) - 1)
+            return
+        for var in self.variables:
+            if var not in assignment:
+                break
+        for value in self.domains[var]:
+            if self.constraints(var, value, assignment):
+                assignment[var] = value
+                self._recursive_backtrack(assignment)
+                del assignment[var]
+
+class AC3:
+    def __init__(self, variables, domains, constraints):
+        self.variables = variables
+        self.domains = domains
+        self.constraints = constraints
+
+    def revise(self, Xi, Xj):
+        revised = False
+        for x in self.domains[Xi][:]:
+            if not any(self.constraints(Xi, x, {Xj: y}) for y in self.domains[Xj]):
+                self.domains[Xi].remove(x)
+                revised = True
+        return revised
+
+    def run(self):
+        queue = deque((Xi, Xj) for Xi in self.variables for Xj in self.variables if Xi != Xj)
+        while queue:
+            Xi, Xj = queue.popleft()
+            if self.revise(Xi, Xj):
+                if not self.domains[Xi]:
+                    return False
+                for Xk in self.variables:
+                    if Xk != Xi and Xk != Xj:
+                        queue.append((Xk, Xi))
+        return True
+
+def default_constraint(var, value, assignment):
+    if value in assignment.values():
+        return False
+    if var in [0, 1, 2] and value in [2, 3, 7]:
+        return False
+    return True
+
+class BacktrackingGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Backtracking Visualizer")
+
+        self.variables = list(range(9))
+        self.default_domains = {var: list(range(9)) for var in self.variables}
+        self.domains = {var: list(range(9)) for var in self.variables}
+        self.constraint_func = default_constraint
+
+        self.solver = BacktrackingSolver(self.variables, self.domains, self.constraint_func)
+        self.solver.solve_all()
+
+        self.current_index = 0
+        self.running = False
+
+        self.create_widgets()
+        self.update_grid(self.solver.trace_steps[0])
+        self.update_solutions()
+
+    def create_widgets(self):
+        main_frame = tk.Frame(self.root)
+        main_frame.pack(padx=10, pady=10)
+
+        grid_frame = tk.Frame(main_frame)
+        grid_frame.pack(side=tk.LEFT, padx=10)
+
+        self.grid_labels = []
+        for row in range(3):
+            for col in range(3):
+                label = tk.Label(grid_frame, text="", width=12, height=6,
+                                 font=("Arial", 12), borderwidth=2, relief="groove", bg="white")
+                label.grid(row=row, column=col, padx=5, pady=5)
+                self.grid_labels.append(label)
+
+        right_frame = tk.Frame(main_frame)
+        right_frame.pack(side=tk.RIGHT, padx=10)
+
+        tk.Label(right_frame, text="Thuật toán:").pack()
+        self.algo_var = tk.StringVar(value="Backtracking")
+        algo_options = ["Backtracking", "Generate and Test", "AC3 Only", "AC3 + Backtracking"] 
+        self.algorithm_combobox = ttk.Combobox(right_frame, 
+                             textvariable=self.algo_var,
+                             values=algo_options,
+                             width=20)
+        self.algorithm_combobox.pack(pady=5)
+        self.algorithm_combobox.current(0)
+
+        tk.Label(right_frame, text="Các nghiệm đã tìm được:", font=("Arial", 12, "bold")).pack()
+        self.solution_listbox = tk.Listbox(right_frame, width=30, height=10)
+        self.solution_listbox.pack()
+
+        tk.Label(right_frame, text="Ràng buộc (Python):", font=("Arial", 12, "bold")).pack(pady=(10, 0))
+        self.constraint_text = tk.Text(right_frame, height=6, width=40, font=("Courier", 10))
+        self.constraint_text.pack()
+
+        default_code = (
+            "def custom_constraint(var, value, assignment):\n"
+            "    if value in assignment.values():\n"
+            "        return False\n"
+            "    if var in [0, 1, 2] and value in [2, 3, 7]:\n"
+            "        return False\n"
+            "    return True\n"
+        )
+        self.constraint_text.insert(tk.END, default_code)
+
+        tk.Button(right_frame, text="🔁 Chạy lại với ràng buộc", command=self.run_with_custom_constraint).pack(pady=5)
+
+        control_frame = tk.Frame(self.root)
+        control_frame.pack(pady=10)
+
+        tk.Button(control_frame, text="◀ Lùi", command=self.step_back).pack(side=tk.LEFT, padx=5)
+        tk.Button(control_frame, text="Tiến ▶", command=self.step_forward).pack(side=tk.LEFT, padx=5)
+        tk.Button(control_frame, text="⏸ Dừng", command=self.pause).pack(side=tk.LEFT, padx=5)
+        tk.Button(control_frame, text="▶ Tiếp tục", command=self.play).pack(side=tk.LEFT, padx=5)
+
+        self.status = tk.Label(self.root, text="", font=("Arial", 12))
+        self.status.pack(pady=5)
+
+    def update_grid(self, assignment):
+        for i in range(9):
+            val = assignment.get(i, "")
+            if isinstance(val, list):
+                val = ",".join(map(str, val))
+            self.grid_labels[i].config(text=str(val) if val != "" else "")
+        self.status.config(text=f"Bước {self.current_index + 1} / {len(self.solver.trace_steps)}")
+
+    def update_solutions(self):
+        self.solution_listbox.delete(0, tk.END)
+        for idx, step_index in enumerate(self.solver.solution_indices):
+            if step_index <= self.current_index:
+                solution = self.solver.trace_steps[step_index]
+                row = [solution.get(i, "") for i in range(9)]
+                self.solution_listbox.insert(tk.END, f"Nghiệm {idx + 1}: {row}")
+                self.solution_listbox.see(tk.END)
+
+    def step_forward(self):
+        if self.current_index < len(self.solver.trace_steps) - 1:
+            self.current_index += 1
+            self.update_grid(self.solver.trace_steps[self.current_index])
+            self.update_solutions()
+
+    def step_back(self):
+        if self.current_index > 0:
+            self.current_index -= 1
+            self.update_grid(self.solver.trace_steps[self.current_index])
+            self.update_solutions()
+
+    def pause(self):
+        self.running = False
+
+    def play(self):
+        self.running = True
+        self.auto_step()
+
+    def auto_step(self):
+        if self.running and self.current_index < len(self.solver.trace_steps) - 1:
+            self.current_index += 1
+            self.update_grid(self.solver.trace_steps[self.current_index])
+            self.update_solutions()
+            self.root.after(300, self.auto_step)
+        else:
+            self.running = False
+
+    def run_with_custom_constraint(self):
+        code = self.constraint_text.get("1.0", tk.END)
+        try:
+            local_scope = {}
+            exec(code, {}, local_scope)
+            custom_fn = local_scope.get("custom_constraint")
+            if not custom_fn:
+                raise ValueError("Không tìm thấy hàm 'custom_constraint'.")
+            self.constraint_func = custom_fn
+            algo = self.algorithm_combobox.get()
+
+            self.domains = {var: list(range(9)) for var in self.variables}
+
+            start_time = time.time()
+
+            if algo == "Backtracking":
+                self.solver = BacktrackingSolver(self.variables, self.domains, self.constraint_func)
+                self.solver.solve_all()
+                print(f"Backtracking time: {time.time() - start_time:.4f} seconds")
+
+            elif algo == "Generate and Test":
+                self.solver = BacktrackingSolver(self.variables, self.domains, self.constraint_func) 
+                self.solver.trace_steps = []
+                self.solver.solution_indices = []
+                self.solver.solutions = []
+                for p in itertools.permutations(range(9)):
+                    assignment = {i: p[i] for i in range(9)}
+                    self.solver.trace_steps.append(assignment.copy())
+                    if all(self.constraint_func(i, assignment[i], {k: assignment[k] for k in assignment if k != i}) for i in range(9)):
+                        self.solver.solutions.append(assignment.copy())
+                        self.solver.solution_indices.append(len(self.solver.trace_steps) - 1)
+                print(f"Generate and Test time: {time.time() - start_time:.4f} seconds")
+
+            elif algo == "AC3 Only":
+                ac3 = AC3(self.variables, self.domains, self.constraint_func)
+                success = ac3.run()
+                if not success:
+                    messagebox.showinfo("Kết quả", "AC3 phát hiện không có miền khả thi.")
+                    return
+                self.solver = BacktrackingSolver(self.variables, self.domains, self.constraint_func)
+                self.solver.trace_steps = [dict((var, self.domains[var]) for var in self.variables)]
+                self.solver.solution_indices = []
+                print(f"AC3 Only time: {time.time() - start_time:.4f} seconds")
+
+            elif algo == "AC3 + Backtracking":
+                ac3 = AC3(self.variables, self.domains, self.constraint_func)
+                success = ac3.run()
+                if not success:
+                    messagebox.showinfo("Kết quả", "AC3 phát hiện không có miền khả thi.")
+                    return
+                self.solver = BacktrackingSolver(self.variables, ac3.domains, self.constraint_func)
+                self.solver.solve_all()
+                print(f"AC3 + Backtracking time: {time.time() - start_time:.4f} seconds")
+
+            self.current_index = 0
+            self.update_grid(self.solver.trace_steps[0])
+            self.update_solutions()
+        except Exception as e:
+            messagebox.showerror("Lỗi ràng buộc", f"Có lỗi trong đoạn mã ràng buộc:\n{e}")
+
+
+# --- Cụ thể cho 9 ô ---
+variables = list(range(9))
+domains = {var: list(range(0, 9)) for var in variables}
 
 
 class SearchApp:
@@ -605,7 +921,7 @@ class SearchApp:
         self.current_state = None
         self.step = 0
         self.RUN = False
-        self.AND_OR_Searcher = AndOrSearch(self)
+        
         
 
     def create_widgets(self):
@@ -617,7 +933,7 @@ class SearchApp:
         self.label_algorithm = tk.Label(control_frame, text="Algorithm:")
         self.label_algorithm.grid(row=0, column=0, padx=5)
         
-        self.algorithms = ["BFS", "UCS", "DFS", "DLS", "IDDFS", "Greedy Search", "A*", "IDA*", "SHC", "SAHC", "STOHC", "SA", "BS", "GA", "And_or_graph_search"]
+        self.algorithms = ["BFS", "UCS", "DFS", "DLS", "IDDFS", "Greedy Search", "A*", "IDA*", "SHC", "SAHC", "STOHC", "SA", "BS", "GA", "And_or_graph_search","BackTracking"]
         self.combobox = ttk.Combobox(control_frame, values=self.algorithms)
         self.combobox.grid(row=0, column=1, padx=5)
         self.combobox.current(0)
@@ -849,11 +1165,18 @@ class SearchApp:
             self.path, self.iterations = BS(self.initial_table, self.final_table, type=heuristic_type)
         elif algorithm == "And_or_graph_search":
             heuristic_type = self.combobox_heuristics.get()
-            self.path, self.iterations = self.AND_OR_Searcher.search()
+
+            problem = NoisyGridProblem(self.initial_table, self.final_table)
+            AND_OR_Searcher = AndOrSearch(problem)
+            self.path, self.iterations = AND_OR_Searcher.search()
         elif algorithm == "GA":
             heuristic_type = self.combobox_heuristics.get()
             GENERIC_Searcher = GenericSearch(self.initial_table,self.final_table, heuristic_type)
-            self.path, self.iterations = GENERIC_Searcher.evolve()
+            self.path, self.iterations = GENERIC_Searcher.evolve(self.result_text)
+        elif algorithm == "BackTracking":
+            window = tk.Tk()
+            app = BacktrackingGUI(window)
+            window.mainloop()
         else:
             messagebox.showerror("Lỗi", "Thuật toán chưa được triển khai")
             return
@@ -885,6 +1208,7 @@ class SearchApp:
                 self.result_text.insert(tk.END,"\n")
 
             self.result_text.insert(tk.END, "="*300 + "\n")
+            # self.result_text.see(tk.END)
         
         return
     
