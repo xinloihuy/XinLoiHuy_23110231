@@ -142,6 +142,9 @@ Mục tiêu của project là áp dụng các nhóm thuật toán AI khác nhau 
 #### And Or Graph Search 
 ![AND_OR](gif_files/AND_OR.gif)
 
+#### Search with Partial Observation
+![Non_DET](gif_files/nondet_search.gif)
+
 **Các thành phần chính của bài toán tìm kiếm trong môi trường phức tạp:**
 - **State:** Trạng thái có thể là một tập hợp các trạng thái có thể xảy ra (Belief state) do không quan sát đầy đủ.
 - **Initial state:** Trạng thái ban đầu, có thể không xác định chính xác.
@@ -151,6 +154,7 @@ Mục tiêu của project là áp dụng các nhóm thuật toán AI khác nhau 
 
 **Nhận xét:**
 - Không áp dụng mạnh và không tối ưu cho 8-puzzle vì đây là bài toán xác định và quan sát đầy đủ.
+- Tốn nhiều tài nguyên tính toán hơn các phương pháp tìm kiếm thông thường.
 - Tuy nhiên, cần triển khai để hiểu cách thuật toán này hoạt động.
 
 ---
@@ -189,6 +193,17 @@ Mục tiêu của project là áp dụng các nhóm thuật toán AI khác nhau 
 **Thuật toán sử dụng:**
 - Q-learning
 - Reinforcement Learning (Value iteration, Policy iteration)
+
+**Minh họa:**
+
+**Các thành phần chính của bài toán học củng cố:**
+- **State:** Trạng thái của puzzle
+- **Action:** Di chuyển ô trống (lên/xuống/trái/phải)
+- **Reward:** Điểm thưởng khi đạt trạng thái mới
+- **Policy:** Chiến lược chọn hành động tại mỗi trạng thái
+- **Value function:** Ước tính giá trị dài hạn của mỗi trạng thái
+- **Q-function:** Ước tính giá trị của cặp trạng thái-hành động
+
 
 **Nhận xét:**
 - Cần nhiều thời gian để train.

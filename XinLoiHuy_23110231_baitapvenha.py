@@ -902,8 +902,6 @@ variables = list(range(9))
 domains = {var: list(range(0, 9)) for var in variables}
 
 
-
-
 class NondeterministicEightPuzzle:
     def __init__(self, num_initial_states, num_goal_states, num_visible_tiles=3):
         self.num_initial_states = num_initial_states
@@ -1095,7 +1093,7 @@ class NondeterministicEightPuzzleGUI:
             return
 
         selected_speed = self.speed_cb.get()
-        self.speed = {"Chậm": 1.0, "Vừa": 0.3, "Nhanh": 0.001}.get(selected_speed, 0.3)
+        self.speed = {"Chậm": 1.0, "Vừa": 0.3, "Nhanh": 0.1}.get(selected_speed, 0.3)
 
         self.status_lbl.config(text="Đang chạy thuật toán...", fg="blue")
         self.result_text.delete(1.0, tk.END)
@@ -1160,10 +1158,18 @@ class NondeterministicEightPuzzleGUI:
         self.update_canvases(self.puzzle.current_states)
         
         while self.running and iteration < max_iterations and not all(solutions_found):
-            # self.result_text.insert(tk.END, f"\n📌 Vòng lặp {iteration + 1}\n")
             self.result_text.see(tk.END)
             
-            # Xử lý từng trạng thái độc lập
+            # Tìm hành động chung từ các trạng thái chưa hoàn thành
+            common_action = None
+            for i, state in enumerate(self.puzzle.current_states):
+                if not solutions_found[i]:
+                    actions = self.puzzle.get_actions_for_states(state, i)
+                    if actions:
+                        common_action = actions[0]  # Lấy hành động đầu tiên của state đầu tiên chưa hoàn thành
+                        break
+            
+            # Xử lý từng trạng thái với hành động chung
             new_states = []
             for i, state in enumerate(self.puzzle.current_states):
                 if solutions_found[i]:
@@ -1173,7 +1179,7 @@ class NondeterministicEightPuzzleGUI:
                 # Kiểm tra goal cho từng state
                 goal_reached = False
                 for goal in self.puzzle.goal_states:
-                    if state == goal:  # So sánh trực tiếp state với goal
+                    if state == goal:
                         solutions_found[i] = True
                         goal_reached = True
                         self.result_text.insert(tk.END, f"✅ State {i + 1} đạt mục tiêu:\n")
@@ -1184,20 +1190,16 @@ class NondeterministicEightPuzzleGUI:
                         break
                 
                 if not goal_reached:
-                    # Lấy hành động riêng cho từng state
-                    actions = self.puzzle.get_actions_for_states(state, i)
-                    if actions:
-                        action = actions[0]
-                        new_state = self.puzzle.apply_action(copy.deepcopy(state), action)
+                    if common_action:  # Áp dụng hành động chung nếu có
+                        new_state = self.puzzle.apply_action(copy.deepcopy(state), common_action)
                         
-                        # Kiểm tra xem có bị lặp lại trạng thái không
                         if new_state and new_state != state:
                             new_states.append(new_state)
                             # Thêm vào visited_states
                             state_tuple = tuple(tuple(row) for row in new_state)
                             self.puzzle.visited_states[i].add(state_tuple)
                         else:
-                            new_states.append(state)  # Giữ nguyên nếu không áp dụng được
+                            new_states.append(state)
                     else:
                         new_states.append(state)
                         self.result_text.insert(tk.END, f"⛔ State {i+1}: Không còn hành động khả dụng\n")
@@ -1215,9 +1217,6 @@ class NondeterministicEightPuzzleGUI:
         else:
             self.status_lbl.config(text="Hoàn thành!", fg="green")
         self.running = False
-
-
-
 
 
 
