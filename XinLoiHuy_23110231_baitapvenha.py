@@ -902,6 +902,325 @@ variables = list(range(9))
 domains = {var: list(range(0, 9)) for var in variables}
 
 
+
+
+class NondeterministicEightPuzzle:
+    def __init__(self, num_initial_states, num_goal_states, num_visible_tiles=3):
+        self.num_initial_states = num_initial_states
+        self.num_goal_states = num_goal_states
+        self.num_visible_tiles = num_visible_tiles
+        self.initial_states = [self.generate_random_state() for _ in range(num_initial_states)]
+        self.goal_states = [self.generate_random_state() for _ in range(num_goal_states)]
+        self.current_states = self.initial_states.copy()
+        self.visited_states = [set() for _ in range(num_initial_states)]  # Theo dõi riêng từng init state
+    def generate_random_state(self):
+        import random
+        tiles = list(range(9))
+        random.shuffle(tiles)
+        return [tiles[i:i+3] for i in range(0, 9, 3)]
+
+    def find_blank(self, state):
+        for i in range(3):
+            for j in range(3):
+                if state[i][j] == 0:
+                    return i, j
+
+    def get_actions_for_states(self, state, state_idx):
+        """Lấy các hành động khả dụng cho một trạng thái cụ thể"""
+        row, col = self.find_blank(state)
+        possible_actions = []
+        
+        if row > 0: possible_actions.append("up")
+        if row < 2: possible_actions.append("down")
+        if col > 0: possible_actions.append("left")
+        if col < 2: possible_actions.append("right")
+        
+        # Lọc các hành động dẫn đến trạng thái chưa thăm
+        filtered_actions = []
+        for action in possible_actions:
+            new_state = self.apply_action(copy.deepcopy(state), action)
+            if new_state and tuple(tuple(row) for row in new_state) not in self.visited_states[state_idx]:
+                filtered_actions.append(action)
+        
+        # Use filtered actions if available, otherwise use all possible actions
+        actions = filtered_actions if filtered_actions else possible_actions
+        # Randomly shuffle the actions
+        random.shuffle(actions)
+        return actions
+
+    def apply_action(self, state, action):
+        """Áp dụng hành động lên một trạng thái và trả về trạng thái mới"""
+        row, col = self.find_blank(state)
+        
+        if action == "up" and row > 0:
+            state[row][col], state[row-1][col] = state[row-1][col], state[row][col]
+        elif action == "down" and row < 2:
+            state[row][col], state[row+1][col] = state[row+1][col], state[row][col]
+        elif action == "left" and col > 0:
+            state[row][col], state[row][col-1] = state[row][col-1], state[row][col]
+        elif action == "right" and col < 2:
+            state[row][col], state[row][col+1] = state[row][col+1], state[row][col]
+        else:
+            return None
+        
+        return state
+
+    def transition_model(self, action, states):
+        result_states = []
+        for state in states:
+            row, col = self.find_blank(state)
+            new_state = copy.deepcopy(state)
+
+            if action == "up" and row > 0:
+                new_state[row][col], new_state[row-1][col] = new_state[row-1][col], new_state[row][col]
+            elif action == "down" and row < 2:
+                new_state[row][col], new_state[row+1][col] = new_state[row+1][col], new_state[row][col]
+            elif action == "left" and col > 0:
+                new_state[row][col], new_state[row][col-1] = new_state[row][col-1], new_state[row][col]
+            elif action == "right" and col < 2:
+                new_state[row][col], new_state[row][col+1] = new_state[row][col+1], new_state[row][col]
+            else:
+                continue
+
+            result_states.append(new_state)
+
+        return result_states
+
+    def percept(self, state):
+        return [tile for row in state for tile in row if tile != 0][:self.num_visible_tiles]
+
+    def goal_test(self):
+        goal_reached = []
+        non_goal = []
+        for state in self.current_states:
+            for goal in self.goal_states:
+                if self.percept(goal) == self.percept(state):
+                    goal_reached.append(state)
+                    break
+            else:
+                non_goal.append(state)
+        return goal_reached, non_goal
+
+
+class NondeterministicEightPuzzleGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Nondeterministic 8-Puzzle Solver")
+
+        self.puzzle = None
+        self.running = False
+        self.speed = 1.0
+        self.current_display_index = 0
+
+        self.build_widgets()
+
+    def build_widgets(self):
+        # Frame chứa các control
+        frm_input = tk.Frame(self.root)
+        frm_input.pack(pady=10)
+
+        # Các control nhập liệu
+        tk.Label(frm_input, text="Số trạng thái khởi đầu:").grid(row=0, column=0)
+        self.init_entry = tk.Entry(frm_input, width=5)
+        self.init_entry.insert(0, "2")
+        self.init_entry.grid(row=0, column=1)
+
+        tk.Label(frm_input, text="Số trạng thái đích:").grid(row=0, column=2)
+        self.goal_entry = tk.Entry(frm_input, width=5)
+        self.goal_entry.insert(0, "3")
+        self.goal_entry.grid(row=0, column=3)
+
+        tk.Label(frm_input, text="Số ô percept:").grid(row=0, column=4)
+        self.percept_entry = tk.Entry(frm_input, width=5)
+        self.percept_entry.insert(0, "3")
+        self.percept_entry.grid(row=0, column=5)
+
+        tk.Label(frm_input, text="Tốc độ:").grid(row=0, column=6)
+        self.speed_cb = ttk.Combobox(frm_input, values=["Chậm", "Vừa", "Nhanh"], width=7)
+        self.speed_cb.set("Vừa")
+        self.speed_cb.grid(row=0, column=7)
+
+        self.run_button = tk.Button(frm_input, text="Chạy", command=self.start_solver)
+        self.run_button.grid(row=0, column=8, padx=10)
+
+        self.status_lbl = tk.Label(self.root, text="", fg="green")
+        self.status_lbl.pack(pady=5)
+
+        # Frame hiển thị trạng thái đầu và đích
+        frm_states = tk.Frame(self.root)
+        frm_states.pack(pady=10)
+
+        self.init_text = tk.Text(frm_states, height=12, width=35)
+        self.init_text.pack(side=tk.LEFT, padx=10)
+        self.goal_text = tk.Text(frm_states, height=12, width=35)
+        self.goal_text.pack(side=tk.LEFT, padx=10)
+
+        # Frame chứa các canvas hiển thị trạng thái hiện tại
+        self.frm_canvases = tk.Frame(self.root)
+        self.frm_canvases.pack(pady=10)
+        self.canvases = []
+        
+        # Kết quả quá trình giải
+        self.result_text = tk.Text(self.root, height=13, width=75)
+        self.result_text.pack(pady=10)
+
+    def create_canvases(self, num_states):
+        # Xóa canvas cũ nếu có
+        for widget in self.frm_canvases.winfo_children():
+            widget.destroy()
+        self.canvases = []
+        
+        # Tạo canvas mới
+        self.canvas_size = 120
+        self.cell_size = self.canvas_size // 3
+        
+        for i in range(num_states):
+            frame = tk.Frame(self.frm_canvases, bd=2, relief=tk.RIDGE)
+            frame.grid(row=0, column=i, padx=5, pady=5)
+            
+            label = tk.Label(frame, text=f"State {i+1}")
+            label.pack()
+            
+            canvas = tk.Canvas(frame, width=self.canvas_size, height=self.canvas_size)
+            canvas.pack()
+            self.canvases.append(canvas)
+
+    def start_solver(self):
+        try:
+            init_count = int(self.init_entry.get())
+            goal_count = int(self.goal_entry.get())
+            percept_tiles = int(self.percept_entry.get())
+        except ValueError:
+            self.status_lbl.config(text="Giá trị nhập không hợp lệ!", fg="red")
+            return
+
+        selected_speed = self.speed_cb.get()
+        self.speed = {"Chậm": 1.0, "Vừa": 0.3, "Nhanh": 0.001}.get(selected_speed, 0.3)
+
+        self.status_lbl.config(text="Đang chạy thuật toán...", fg="blue")
+        self.result_text.delete(1.0, tk.END)
+
+        self.puzzle = NondeterministicEightPuzzle(init_count, goal_count, percept_tiles)
+        self.display_states()
+        
+        # Tạo canvas tương ứng với số trạng thái khởi đầu
+        self.create_canvases(init_count)
+
+        self.running = True
+        threading.Thread(target=self.solve_thread, daemon=True).start()
+
+    def display_states(self):
+        self.init_text.delete(1.0, tk.END)
+        self.goal_text.delete(1.0, tk.END)
+
+        self.init_text.insert(tk.END, "⚪ Trạng thái khởi đầu:\n\n")
+        for i, state in enumerate(self.puzzle.initial_states):
+            self.init_text.insert(tk.END, f"Init {i+1}:\n")
+            for row in state:
+                self.init_text.insert(tk.END, " ".join(str(x) for x in row) + "\n")
+            self.init_text.insert(tk.END, "\n")
+
+        self.goal_text.insert(tk.END, "🔴 Trạng thái đích:\n\n")
+        for i, state in enumerate(self.puzzle.goal_states):
+            self.goal_text.insert(tk.END, f"Goal {i+1}:\n")
+            for row in state:
+                self.goal_text.insert(tk.END, " ".join(str(x) for x in row) + "\n")
+            self.goal_text.insert(tk.END, "\n")
+
+    def update_canvases(self, states):
+        for i, canvas in enumerate(self.canvases):
+            canvas.delete("all")
+            if i < len(states):
+                state = states[i]
+                for row in range(3):
+                    for col in range(3):
+                        x1 = col * self.cell_size
+                        y1 = row * self.cell_size
+                        x2 = x1 + self.cell_size
+                        y2 = y1 + self.cell_size
+                        color = "lightblue" if state[row][col] == 0 else "white"
+                        canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="black")
+                        value = state[row][col]
+                        if value != 0:
+                            canvas.create_text(
+                                x1 + self.cell_size//2,
+                                y1 + self.cell_size//2,
+                                text=str(value),
+                                font=("Arial", 16),
+                                fill="blue"
+                            )
+
+    def solve_thread(self):
+        iteration = 0
+        max_iterations = 30000
+        solutions_found = [False] * len(self.puzzle.initial_states)
+        
+        # Khởi tạo với tất cả trạng thái ban đầu
+        self.puzzle.current_states = self.puzzle.initial_states.copy()
+        self.update_canvases(self.puzzle.current_states)
+        
+        while self.running and iteration < max_iterations and not all(solutions_found):
+            # self.result_text.insert(tk.END, f"\n📌 Vòng lặp {iteration + 1}\n")
+            self.result_text.see(tk.END)
+            
+            # Xử lý từng trạng thái độc lập
+            new_states = []
+            for i, state in enumerate(self.puzzle.current_states):
+                if solutions_found[i]:
+                    new_states.append(state)  # Giữ nguyên nếu đã giải xong
+                    continue
+                    
+                # Kiểm tra goal cho từng state
+                goal_reached = False
+                for goal in self.puzzle.goal_states:
+                    if state == goal:  # So sánh trực tiếp state với goal
+                        solutions_found[i] = True
+                        goal_reached = True
+                        self.result_text.insert(tk.END, f"✅ State {i + 1} đạt mục tiêu:\n")
+                        for row in state:
+                            self.result_text.insert(tk.END, " ".join(str(x) for x in row) + "\n")
+                        self.result_text.insert(tk.END, "\n")
+                        new_states.append(state)
+                        break
+                
+                if not goal_reached:
+                    # Lấy hành động riêng cho từng state
+                    actions = self.puzzle.get_actions_for_states(state, i)
+                    if actions:
+                        action = actions[0]
+                        new_state = self.puzzle.apply_action(copy.deepcopy(state), action)
+                        
+                        # Kiểm tra xem có bị lặp lại trạng thái không
+                        if new_state and new_state != state:
+                            new_states.append(new_state)
+                            # Thêm vào visited_states
+                            state_tuple = tuple(tuple(row) for row in new_state)
+                            self.puzzle.visited_states[i].add(state_tuple)
+                        else:
+                            new_states.append(state)  # Giữ nguyên nếu không áp dụng được
+                    else:
+                        new_states.append(state)
+                        self.result_text.insert(tk.END, f"⛔ State {i+1}: Không còn hành động khả dụng\n")
+            
+            self.puzzle.current_states = new_states
+            self.update_canvases(new_states)
+            time.sleep(self.speed)
+            iteration += 1
+
+            if all(solutions_found):
+                break
+
+        if iteration >= max_iterations:
+            self.status_lbl.config(text="Đạt giới hạn vòng lặp.", fg="orange")
+        else:
+            self.status_lbl.config(text="Hoàn thành!", fg="green")
+        self.running = False
+
+
+
+
+
+
 class SearchApp:
     def __init__(self, root):
         self.root = root
@@ -933,7 +1252,7 @@ class SearchApp:
         self.label_algorithm = tk.Label(control_frame, text="Algorithm:")
         self.label_algorithm.grid(row=0, column=0, padx=5)
         
-        self.algorithms = ["BFS", "UCS", "DFS", "DLS", "IDDFS", "Greedy Search", "A*", "IDA*", "SHC", "SAHC", "STOHC", "SA", "BS", "GA", "And_or_graph_search","BackTracking"]
+        self.algorithms = ["BFS", "UCS", "DFS", "DLS", "IDDFS", "Greedy Search", "A*", "IDA*", "SHC", "SAHC", "STOHC", "SA", "BS", "GA", "And_or_graph_search","BackTracking","Nondeterministic 8-Puzzle"]
         self.combobox = ttk.Combobox(control_frame, values=self.algorithms)
         self.combobox.grid(row=0, column=1, padx=5)
         self.combobox.current(0)
@@ -1165,7 +1484,6 @@ class SearchApp:
             self.path, self.iterations = BS(self.initial_table, self.final_table, type=heuristic_type)
         elif algorithm == "And_or_graph_search":
             heuristic_type = self.combobox_heuristics.get()
-
             problem = NoisyGridProblem(self.initial_table, self.final_table)
             AND_OR_Searcher = AndOrSearch(problem)
             self.path, self.iterations = AND_OR_Searcher.search()
@@ -1177,6 +1495,10 @@ class SearchApp:
             window = tk.Tk()
             app = BacktrackingGUI(window)
             window.mainloop()
+        elif algorithm == "Nondeterministic 8-Puzzle":
+            window2 = tk.Tk()
+            app = NondeterministicEightPuzzleGUI(window2)
+            window2.mainloop()
         else:
             messagebox.showerror("Lỗi", "Thuật toán chưa được triển khai")
             return
