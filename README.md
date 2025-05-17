@@ -211,6 +211,9 @@ Mục tiêu của project là áp dụng các nhóm thuật toán AI khác nhau 
 
 ---
 
+### So sánh các thuật toán
+![SoSanh](gif_files/SoSanh.png)
+
 ## 3. Kết luận
 
 Qua project này, em đã:
